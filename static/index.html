@@ -72,12 +72,39 @@
       return americanToImplied(outcomes[0].price) + americanToImplied(outcomes[1].price) < MAX_VIG;
     }
 
+    function pickModalPoint(bookmakers, marketKey) {
+      const counts = {};
+      for (const bk of bookmakers) {
+        const mkt = bk.markets?.find(m => m.key === marketKey);
+        if (!mkt || !passesVig(mkt.outcomes) || mkt.outcomes.length !== 2) continue;
+        const pts = mkt.outcomes.map(o => Math.abs(o.point)).sort((a,b) => a-b);
+        if (!pts.every(p => Math.abs(p % 1) === 0.5)) continue;
+        const key = pts.join('|');
+        counts[key] = (counts[key] || 0) + 1;
+      }
+      let best = null, bestCount = 0;
+      for (const k in counts) {
+        if (counts[k] > bestCount) { bestCount = counts[k]; best = k; }
+      }
+      return best;
+    }
+
     function calcTrueOdds(bookmakers, marketKey) {
+      const isPointMarket = marketKey === 'spreads' || marketKey === 'totals';
+      const targetPointKey = isPointMarket ? pickModalPoint(bookmakers, marketKey) : null;
+      if (isPointMarket && !targetPointKey) return null;
+
       const outcomes = {};
       let bookCount = 0;
       for (const bk of bookmakers) {
         const mkt = bk.markets?.find(m => m.key === marketKey);
-        if (!mkt || !passesVig(mkt.outcomes)) continue;
+        if (!mkt || !passesVig(mkt.outcomes) || mkt.outcomes.length !== 2) continue;
+
+        if (isPointMarket) {
+          const pts = mkt.outcomes.map(o => Math.abs(o.point)).sort((a,b) => a-b).join('|');
+          if (pts !== targetPointKey) continue;
+        }
+
         bookCount++;
         for (const oc of mkt.outcomes) {
           const key = oc.name + (oc.point !== undefined ? '_' + oc.point : '');
@@ -87,7 +114,7 @@
       }
       if (bookCount === 0) return null;
       const list = Object.values(outcomes);
-      if (list.length < 2) return null;
+      if (list.length !== 2) return null;
       const avg = list.map(o => ({ ...o, avg: o.probs.reduce((a,b)=>a+b,0)/o.probs.length }));
       const total = avg.reduce((s,o) => s + o.avg, 0);
       return { outcomes: avg.map(o => ({ ...o, american: impliedToAmerican(o.avg / total) })), bookCount };
