@@ -1,0 +1,164 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>True Odds Dashboard</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #f5f5f5; color: #1a1a1a; }
+    .wrap { max-width: 700px; margin: 0 auto; padding: 1.5rem 1rem; }
+    h1 { font-size: 18px; font-weight: 500; margin-bottom: 1.25rem; }
+    .header { display: flex; align-items: center; gap: 10px; margin-bottom: 0.75rem; flex-wrap: wrap; }
+    .sport-btn { font-size: 13px; padding: 6px 14px; border-radius: 8px; border: 1px solid #ccc; background: #fff; color: #555; cursor: pointer; }
+    .sport-btn.active { background: #1a1a1a; color: #fff; border-color: #1a1a1a; font-weight: 500; }
+    .status { font-size: 12px; color: #888; margin-left: auto; }
+    .filter-note { font-size: 12px; color: #888; margin-bottom: 1rem; }
+    .loading { font-size: 14px; color: #888; padding: 2rem 0; text-align: center; }
+    .error-msg { font-size: 14px; color: #c0392b; padding: 1rem; background: #fdecea; border-radius: 8px; margin-bottom: 1rem; }
+    .no-games { font-size: 14px; color: #888; padding: 2rem 0; text-align: center; }
+    .game-card { background: #fff; border: 1px solid #e5e5e5; border-radius: 12px; padding: 1rem 1.25rem; margin-bottom: 10px; }
+    .game-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; }
+    .game-title { font-size: 15px; font-weight: 500; }
+    .game-time { font-size: 12px; color: #999; }
+    .markets { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
+    .market { background: #f9f9f9; border-radius: 8px; padding: 10px 12px; }
+    .market-label { font-size: 11px; color: #999; text-transform: uppercase; letter-spacing: 0.04em; margin-bottom: 6px; }
+    .market-rows { display: flex; flex-direction: column; gap: 4px; }
+    .market-row { display: flex; justify-content: space-between; align-items: center; font-size: 13px; }
+    .team-name { color: #555; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 60%; }
+    .odds-val { font-weight: 500; }
+    .pos { color: #27ae60; }
+    .neg { color: #1a1a1a; }
+    .na { font-size: 13px; color: #bbb; }
+    .books-count { font-size: 11px; color: #bbb; margin-top: 8px; }
+    @media (max-width: 480px) { .markets { grid-template-columns: 1fr; } }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <h1>True Odds Dashboard</h1>
+    <div class="header">
+      <button class="sport-btn active" data-sport="icehockey_nhl">NHL</button>
+      <button class="sport-btn" data-sport="baseball_mlb">MLB</button>
+      <button class="sport-btn" data-sport="americanfootball_nfl">NFL</button>
+      <button class="sport-btn" data-sport="basketball_nba">NBA</button>
+      <span class="status" id="status"></span>
+    </div>
+    <div class="filter-note">Only books with vig under 5.5% included in true odds calculation.</div>
+    <div id="content"><div class="loading">Loading...</div></div>
+  </div>
+
+  <script>
+    const cache = {};
+    const MAX_VIG = 1.055;
+
+    function americanToImplied(a) {
+      return a > 0 ? 100 / (a + 100) : Math.abs(a) / (Math.abs(a) + 100);
+    }
+
+    function impliedToAmerican(p) {
+      if (p <= 0 || p >= 1) return null;
+      return p >= 0.5 ? Math.round(-(p / (1 - p)) * 100) : Math.round(((1 - p) / p) * 100);
+    }
+
+    function formatAmerican(v) {
+      if (v === null || isNaN(v)) return '—';
+      return v > 0 ? '+' + v : String(v);
+    }
+
+    function passesVig(outcomes) {
+      if (outcomes.length !== 2) return false;
+      return americanToImplied(outcomes[0].price) + americanToImplied(outcomes[1].price) < MAX_VIG;
+    }
+
+    function calcTrueOdds(bookmakers, marketKey) {
+      const outcomes = {};
+      let bookCount = 0;
+      for (const bk of bookmakers) {
+        const mkt = bk.markets?.find(m => m.key === marketKey);
+        if (!mkt || !passesVig(mkt.outcomes)) continue;
+        bookCount++;
+        for (const oc of mkt.outcomes) {
+          const key = oc.name + (oc.point !== undefined ? '_' + oc.point : '');
+          if (!outcomes[key]) outcomes[key] = { name: oc.name, point: oc.point, probs: [] };
+          outcomes[key].probs.push(americanToImplied(oc.price));
+        }
+      }
+      if (bookCount === 0) return null;
+      const list = Object.values(outcomes);
+      if (list.length < 2) return null;
+      const avg = list.map(o => ({ ...o, avg: o.probs.reduce((a,b)=>a+b,0)/o.probs.length }));
+      const total = avg.reduce((s,o) => s + o.avg, 0);
+      return { outcomes: avg.map(o => ({ ...o, american: impliedToAmerican(o.avg / total) })), bookCount };
+    }
+
+    function formatTime(iso) {
+      const d = new Date(iso);
+      return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) + ' ' +
+        d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
+    }
+
+    function renderMarket(result) {
+      if (!result) return '<div class="na">Filtered out</div>';
+      let html = '<div class="market-rows">';
+      for (const o of result.outcomes) {
+        const label = o.name + (o.point !== undefined ? ' ' + (o.point > 0 ? '+' : '') + o.point : '');
+        html += `<div class="market-row"><span class="team-name">${label}</span><span class="odds-val ${o.american > 0 ? 'pos' : 'neg'}">${formatAmerican(o.american)}</span></div>`;
+      }
+      return html + '</div>';
+    }
+
+    function renderGames(games) {
+      const content = document.getElementById('content');
+      if (!games.length) { content.innerHTML = '<div class="no-games">No upcoming games found.</div>'; return; }
+      let html = '';
+      for (const g of games) {
+        const h2h = calcTrueOdds(g.bookmakers, 'h2h');
+        const spread = calcTrueOdds(g.bookmakers, 'spreads');
+        const totals = calcTrueOdds(g.bookmakers, 'totals');
+        const bookCount = (h2h || spread || totals)?.bookCount || 0;
+        html += `<div class="game-card">
+          <div class="game-header">
+            <span class="game-title">${g.away_team} @ ${g.home_team}</span>
+            <span class="game-time">${formatTime(g.commence_time)}</span>
+          </div>
+          <div class="markets">
+            <div class="market"><div class="market-label">Moneyline</div>${renderMarket(h2h)}</div>
+            <div class="market"><div class="market-label">Spread</div>${renderMarket(spread)}</div>
+            <div class="market"><div class="market-label">Total (O/U)</div>${renderMarket(totals)}</div>
+          </div>
+          ${bookCount > 0 ? `<div class="books-count">Averaged across ${bookCount} book${bookCount !== 1 ? 's' : ''}</div>` : ''}
+        </div>`;
+      }
+      content.innerHTML = html;
+    }
+
+    async function loadSport(sport) {
+      if (cache[sport]) { renderGames(cache[sport]); return; }
+      document.getElementById('content').innerHTML = '<div class="loading">Fetching lines...</div>';
+      document.getElementById('status').textContent = '';
+      try {
+        const res = await fetch(`/api/odds/${sport}`);
+        const json = await res.json();
+        if (json.error) { document.getElementById('content').innerHTML = `<div class="error-msg">Error: ${json.error}</div>`; return; }
+        if (json.remaining) document.getElementById('status').textContent = `${json.remaining} credits remaining`;
+        cache[sport] = json.data;
+        renderGames(json.data);
+      } catch(e) {
+        document.getElementById('content').innerHTML = `<div class="error-msg">Failed to fetch: ${e.message}</div>`;
+      }
+    }
+
+    document.querySelectorAll('.sport-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        document.querySelectorAll('.sport-btn').forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+        loadSport(btn.dataset.sport);
+      });
+    });
+
+    loadSport('icehockey_nhl');
+  </script>
+</body>
+</html>
