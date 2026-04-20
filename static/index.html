@@ -51,6 +51,21 @@
   <script>
     const cache = {};
     const MAX_VIG = 1.055;
+    const CACHE_TTL = 30 * 60 * 1000;
+
+    function lsGet(sport) {
+      try {
+        const raw = localStorage.getItem('odds_' + sport);
+        if (!raw) return null;
+        const { ts, data } = JSON.parse(raw);
+        if (Date.now() - ts > CACHE_TTL) { localStorage.removeItem('odds_' + sport); return null; }
+        return data;
+      } catch(e) { return null; }
+    }
+
+    function lsSet(sport, data) {
+      try { localStorage.setItem('odds_' + sport, JSON.stringify({ ts: Date.now(), data })); } catch(e) {}
+    }
 
     function americanToImplied(a) {
       return a > 0 ? 100 / (a + 100) : Math.abs(a) / (Math.abs(a) + 100);
@@ -162,6 +177,8 @@
 
     async function loadSport(sport) {
       if (cache[sport]) { renderGames(cache[sport]); return; }
+      const cached = lsGet(sport);
+      if (cached) { cache[sport] = cached; renderGames(cached); document.getElementById('status').textContent = 'cached'; return; }
       document.getElementById('content').innerHTML = '<div class="loading">Fetching lines...</div>';
       document.getElementById('status').textContent = '';
       try {
@@ -170,6 +187,7 @@
         if (json.error) { document.getElementById('content').innerHTML = `<div class="error-msg">Error: ${json.error}</div>`; return; }
         if (json.remaining) document.getElementById('status').textContent = `${json.remaining} credits remaining`;
         cache[sport] = json.data;
+        lsSet(sport, json.data);
         renderGames(json.data);
       } catch(e) {
         document.getElementById('content').innerHTML = `<div class="error-msg">Failed to fetch: ${e.message}</div>`;
