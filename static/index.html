@@ -144,7 +144,8 @@
       if (!result) return '<div class="na">Filtered out</div>';
       let html = '<div class="market-rows">';
       for (const o of result.outcomes) {
-        const label = o.name + (o.point !== undefined ? ' ' + (o.point > 0 ? '+' : '') + o.point : '');
+        const point = o.point !== undefined ? (o.point > 0 ? '+' : '') + o.point + ' ' : '';
+        const label = point + o.name;
         html += `<div class="market-row"><span class="team-name">${label}</span><span class="odds-val ${o.american > 0 ? 'pos' : 'neg'}">${formatAmerican(o.american)}</span></div>`;
       }
       return html + '</div>';
