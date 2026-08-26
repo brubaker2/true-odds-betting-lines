@@ -41,6 +41,7 @@
     <div class="header">
       <button class="sport-btn active" data-sport="baseball_mlb">MLB</button>
       <button class="sport-btn" data-sport="americanfootball_nfl">NFL</button>
+      <button class="sport-btn" data-sport="americanfootball_ncaaf">NCAAF</button>
       <button class="sport-btn" data-sport="icehockey_nhl">NHL</button>
       <button class="sport-btn" data-sport="basketball_nba">NBA</button>
       <span class="status" id="status"></span>
@@ -48,12 +49,10 @@
     <div class="filter-note">Only books with vig under 5.5% included in true odds calculation.</div>
     <div id="content"><div class="loading">Loading...</div></div>
   </div>
-
   <script>
     const cache = {};
     const MAX_VIG = 1.055;
     const CACHE_TTL = 15 * 60 * 1000;
-
     function lsGet(sport) {
       try {
         const raw = localStorage.getItem('odds_' + sport);
@@ -63,30 +62,24 @@
         return data;
       } catch(e) { return null; }
     }
-
     function lsSet(sport, data) {
       try { localStorage.setItem('odds_' + sport, JSON.stringify({ ts: Date.now(), data })); } catch(e) {}
     }
-
     function americanToImplied(a) {
       return a > 0 ? 100 / (a + 100) : Math.abs(a) / (Math.abs(a) + 100);
     }
-
     function impliedToAmerican(p) {
       if (p <= 0 || p >= 1) return null;
       return p >= 0.5 ? Math.round(-(p / (1 - p)) * 100) : Math.round(((1 - p) / p) * 100);
     }
-
     function formatAmerican(v) {
       if (v === null || isNaN(v)) return '—';
       return v > 0 ? '+' + v : String(v);
     }
-
     function passesVig(outcomes) {
       if (outcomes.length !== 2) return false;
       return americanToImplied(outcomes[0].price) + americanToImplied(outcomes[1].price) < MAX_VIG;
     }
-
     function pickModalPoint(bookmakers, marketKey) {
       const counts = {};
       for (const bk of bookmakers) {
@@ -103,23 +96,19 @@
       }
       return best;
     }
-
     function calcTrueOdds(bookmakers, marketKey, homeTeam) {
       const isPointMarket = marketKey === 'spreads' || marketKey === 'totals';
       const targetPointKey = isPointMarket ? pickModalPoint(bookmakers, marketKey) : null;
       if (isPointMarket && !targetPointKey) return null;
-
       const outcomes = {};
       let bookCount = 0;
       for (const bk of bookmakers) {
         const mkt = bk.markets?.find(m => m.key === marketKey);
         if (!mkt || !passesVig(mkt.outcomes) || mkt.outcomes.length !== 2) continue;
-
         if (isPointMarket) {
           const pts = mkt.outcomes.map(o => Math.abs(o.point)).sort((a,b) => a-b).join('|');
           if (pts !== targetPointKey) continue;
         }
-
         bookCount++;
         for (const oc of mkt.outcomes) {
           const key = oc.name + (oc.point !== undefined ? '_' + oc.point : '');
@@ -140,13 +129,11 @@
       }
       return { outcomes: result, bookCount };
     }
-
     function formatTime(iso) {
       const d = new Date(iso);
       return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) + ' ' +
         d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
     }
-
     function renderMarket(result) {
       if (!result) return '<div class="na">Filtered out</div>';
       let html = '<div class="market-rows">';
@@ -157,7 +144,6 @@
       }
       return html + '</div>';
     }
-
     function renderGames(games) {
       const content = document.getElementById('content');
       if (!games.length) { content.innerHTML = '<div class="no-games">No upcoming games found.</div>'; return; }
@@ -182,7 +168,6 @@
       }
       content.innerHTML = html;
     }
-
     async function loadSport(sport) {
       if (cache[sport]) { renderGames(cache[sport]); return; }
       const cached = lsGet(sport);
@@ -201,7 +186,6 @@
         document.getElementById('content').innerHTML = `<div class="error-msg">Failed to fetch: ${e.message}</div>`;
       }
     }
-
     document.querySelectorAll('.sport-btn').forEach(btn => {
       btn.addEventListener('click', () => {
         document.querySelectorAll('.sport-btn').forEach(b => b.classList.remove('active'));
@@ -209,7 +193,6 @@
         loadSport(btn.dataset.sport);
       });
     });
-
     loadSport('baseball_mlb');
   </script>
 </body>
