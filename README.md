@@ -29,6 +29,8 @@ The away team is always listed first and the home team second, matching the `Awa
 5. **Average implied probabilities**, not the odds themselves. American odds are nonlinear, so averaging `-200` and `-180` directly gives a different — and wrong — answer versus converting each to probability first.
 6. **Normalize** the two averaged probabilities so they sum to exactly 100%, then convert back to American odds.
 
+Each line shows both the true odds and the normalized implied probability behind them (e.g. `-150 60.0%`). The two percentages in a market always sum to 100%.
+
 If no book clears the vig filter for a given market, that cell reads **"Filtered out."** This is common on lopsided moneylines (a -3000 favorite almost always carries more than 5.5% vig) and is expected behavior, not an error.
 
 ---
